@@ -3,7 +3,8 @@ const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
   username: String,
-  password: String, // Note: In a real-world application, never store passwords as plain text
+  password: String,
+  email: String,
   purchasedPlans: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Plan' }],
 });
 

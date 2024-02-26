@@ -21,12 +21,19 @@ app.listen(3000, () => console.log('Server running on port 3000'));
 // ...
 
 app.post('/signup', async (req, res) => {
-  const { username, password } = req.body;
+  const { username, email, password } = req.body;
 
+  if(!password){
+    return res.status(400).json({ message: 'Password is required for signup' });
+  }
   const hashedPassword = await bcrypt.hash(password, 10);
 
+  if(!email || !username){
+	return res.status(400).json({ message: 'Email and user name required' });
+  }
   const user = new User({
     username,
+	email,
     password: hashedPassword,
   });
 
@@ -50,7 +57,9 @@ app.post('/login', async (req, res) => {
     return res.status(400).json({ message: 'Incorrect password' });
   }
 
-  const token = jwt.sign({ userId: user._id }, 'RamLakhanSitaHanuman', { expiresIn: '7d' });
+  const token = jwt.sign({ userId: user._id }, 'RamLakhanSitaHanuman');
+      const payload = jwt.verify(token, 'RamLakhanSitaHanuman');
+	  console.log(payload);
 
   res.json({ message: 'User logged in successfully', token });
 });
@@ -59,20 +68,26 @@ app.post('/login', async (req, res) => {
 // ...
 
 const authenticate = async (req, res, next) => {
-  const token = req.headers.authorization;
+  let token = req.headers.authorization; // Get the token header
+  if (!token) {
+    return res.status(403).json({ message: 'Authentication token required' });
+  }
+  token = token.replace(/^Bearer\s+/, ""); // Remove the Bearer prefix and any whitespace
 
   if (!token) {
     return res.status(403).json({ message: 'Authentication token required' });
   }
 
   try {
-    const payload = jwt.verify(token, 'your-secret-key');
+    const payload = jwt.verify(token, 'RamLakhanSitaHanuman');
 
     req.user = await User.findById(payload.userId);
+	console.log(req.uesr);
+	req.isVerified = true;
 
     next();
   } catch (e) {
-    return res.status(403).json({ message: 'Invalid or expired authentication token' });
+    return res.status(403).json({ message: 'Invalid or expired authentication token' + " " + e });
   }
 };
 
@@ -88,45 +103,136 @@ app.get('/protected', authenticate, (req, res) => {
 
 // ...
 
-app.post('/add-plans', async (req, res) => {
-  const plans = [
+app.post('/add-plans', authenticate, async (req, res) => {
+  const plansToAdd = [
     { 
       name: 'Basic', 
-      price: 10, 
-      features: ['feature1', 'feature2'], 
-      description: 'This is a basic plan.', 
+      price: 199, // Adjusted price for accuracy
+      features: ['Responsive Design', 'Content Management System (CMS)'],
+      description: 'Begin your online journey with essential features designed to establish your web presence.',
       duration: 'monthly', 
       isActive: true 
     },
     { 
       name: 'Premium', 
-      price: 20, 
-      features: ['feature1', 'feature2', 'feature3'], 
-      description: 'This is a premium plan.', 
+      price: 299, // Adjusted price for accuracy
+      features: ['Responsive Design', 'Content Management System (CMS)', 'Search Engine Optimization (SEO)'],
+      description: 'Elevate your website with advanced features tailored to enhance performance and visibility.',
       duration: 'quarterly', 
       isActive: true 
     },
     { 
       name: 'Ultimate', 
-      price: 30, 
-      features: ['feature1', 'feature2', 'feature3', 'feature4'], 
-      description: 'This is an ultimate plan.', 
+      price: 499, // Adjusted price for accuracy
+      features: ['Responsive Design', 'Content Management System (CMS)', 'Search Engine Optimization (SEO)', 'Analytics and Reporting'],
+      description: 'Unlock the full potential of your online presence with comprehensive features and priority support.',
       duration: 'yearly', 
       isActive: true 
     },
   ];
-
-  for (let plan of plans) {
-    const newPlan = new Plan(plan);
-    await newPlan.save();
+  try {
+		for (let planData of plansToAdd) {
+			let existingPlan = await Plan.findOne({ name: planData.name });
+			if (!existingPlan) {
+				const newPlan = new Plan(planData);
+				await newPlan.save();
+			} else {
+				// Update existing plan data
+				existingPlan.set(planData);
+				await existingPlan.save();
+			}
+		}
+    res.status(201).json({ message: 'Plans added successfully' }); // Use 201 Created status for resource creation
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to add plans' });
   }
-
-  res.json({ message: 'Plans added successfully' });
 });
+
+
 
 // fetching all plans from the database
 
-app.get('/plans', async (req, res) => {
-  const plans = await Plan.find();
-  res.json(plans);
+app.get('/all-plans', authenticate, async (req, res) => {
+  const { isVerified } = req;
+  try {
+    let plans;
+    if (isVerified) {
+      plans = await Plan.find();
+    } else {
+      plans = await Plan.find().select('name features').lean().exec(); // Only fetch name and features
+      plans.forEach(plan => {
+        plan.price = "Please log in to view prices."; // Modify price for non-verified users
+      });
+    }
+    res.json(plans);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+
+
+  //purchasing a plan 
+
+  app.post('/purchase/:planId',authenticate,async (req, res) => {
+  try {
+    // Extract the plan ID from the request parameters
+    const planId = req.params.planId;
+
+    // Find the plan in the database
+    const plan = await Plan.findById(planId);
+    if (!plan) {
+      return res.status(404).json({ error: 'Plan not found' });
+    }
+
+    // Create a new purchase document
+    const purchase = new Purchase({
+      user: req.user._id, // Assuming user is authenticated and user ID is available in the request
+      plan: planId,
+      purchaseDate: new Date()
+    });
+
+    // Save the purchase document to the database
+    await purchase.save();
+
+    // Return a success response
+    res.status(201).json({ message: 'Plan purchased successfully', purchase: purchase });
+  } catch (error) {
+    console.error(error);
+    // Return an error response
+    res.status(500).json({ error: 'Failed to purchase plan' });
+  }
+});
+
+//purchase history for logged in user 
+
+app.get('/purchases',authenticate, async (req, res) => {
+  try {
+    // Find all purchases associated with the authenticated user
+    const purchases = await Purchase.find({ user: req.user._id })
+                                     .populate('plan')
+                                     .exec();
+
+    // If no purchases found, return an empty array
+    if (!purchases || purchases.length === 0) {
+      return res.json({ message: 'No purchases found for this user' });
+    }
+	 // Format timestamps to Indian Standard Time (IST)
+    const purchasesIST = purchases.map(purchase => {
+      return {
+        ...purchase._doc,
+        purchaseDate: new Date(purchase.purchaseDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      };
+    });
+
+    // Return the list of purchases with formatted timestamps
+    res.json({ purchases: purchasesIST });
+
+  } catch (error) {
+    console.error(error);
+    // Return an error response
+    res.status(500).json({ error: 'Failed to fetch user purchases' });
+  }
+});
+
+
 });
