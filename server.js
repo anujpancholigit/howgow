@@ -15,8 +15,9 @@ mongoose.connect(monUri);
 
 app.use(express.json());
 
+let PORT = 3007;
 
-app.listen(3000, () => console.log('Server running on port 3000'));
+app.listen(PORT, () => console.log('Server running on port 3000'));
 
 // ...
 
