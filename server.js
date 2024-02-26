@@ -203,6 +203,10 @@ app.get('/all-plans', authenticate, async (req, res) => {
   }
 });
 
+app.get('/', async (req, res) => { 
+	res.json('Ram ram ji Pland me Aapka Swagat Hai');
+})
+
 //purchase history for logged in user 
 
 app.get('/purchases',authenticate, async (req, res) => {
